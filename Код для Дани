@@ -1,0 +1,2125 @@
+using System;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Documents;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.IO;
+using System.Runtime.Serialization.Formatters.Binary;
+using System.Diagnostics;
+using WMPLib;
+
+namespace БиржаРемейк
+{
+    public partial class MainWindow : Window
+    {
+        BinaryFormatter formatter = new BinaryFormatter(); //Для сохранения сериализации
+
+        Random rnd = new Random(); //для рандома
+
+        //Интерфейс
+        public Grid[] GridMass = new Grid[3]; //Для хранения сеточек
+        public Button[] BuyMoney = new Button[30]; //Кнопки для покупки валюты (выбор в списке)
+        public Button[] ButtonMass = new Button[10]; //Для хранения кнопок
+        public ScrollViewer[] ScrollMass = new ScrollViewer[3]; //Листалка для списков
+        public Canvas[] CanvasMass = new Canvas[3]; //Канвасы поверъ которых будем располагать элементы (окна, считай)
+        public Image[] ImageMass = new Image[10]; //Для хранения картинок
+        public Slider[] SliderMass = new Slider[10]; //Прокручиваемая полосочка аля "Сколько продать/купить"
+        public TextBlock[] TextColorMass = new TextBlock[10]; //Для текста (красивого)
+        public TextBox[] TextBoxMass = new TextBox[10]; //Для записи более точного числа покупаемой валюты (кому лень ползунком двигать)
+
+        //Текст
+        public string[] Word = new string[300]; //Для хранения текста
+        public string[] MoneyName = new string[31]; //Запоминает имена валюты
+        public string LangWay = "rus"; //Язык игры
+
+        //Нормальные переменные
+        public int[] Money = new int[30]; //Тут хранится непосредственно значение валют
+        public int[] Price = new int[30]; //Тут хранится цена валюты
+        public int[] Status = new int[30]; //Тут хранится "статус" нынешней валюты. 0 - мертва, 1 - без особого статуса
+        public int[,] PriceChange = new int[30, 5]; //Тут записывается изменение цены, 0 - валюта, 1 - изменяемая через 1-5 дней
+        public int[] Event = new int[5]; //Тут записывается ивент, который произойдёт через 1-5 дней
+        public bool[] Logic = new bool[100]; //I love my Logic[], all my event are inside it (c)
+        public int RealMoney = 1000; //Классические доллары
+        public int IDm = -1; //айди нажатой валюты (нужно для обновления текста при покупке/продаже)
+        public int Day = 1; //Счётчик нажатия на "ждать"
+
+        WMPLib.WindowsMediaPlayer wplayer = new WMPLib.WindowsMediaPlayer();
+        WMPLib.WindowsMediaPlayer Player; //для музыки
+
+        public MainWindow()
+        {
+            InitializeComponent();
+
+            this.PreviewKeyDown += (ss, ee) =>
+            {
+                if (ee.Key == Key.Escape)
+                {
+                    Debug.WriteLine("Нажат Esc");
+                    MenuShow();
+                }
+            }; //я НЕ ЗНАЮ почему, но подобное отслеживание нажатой клавиши работает только если её вставить в мейн шиндоус, где инициализируется всё остальное. Главное, что работает
+
+            string Pyt = @"Text\" + LangWay + @"\main.txt"; //Загружаем основной игровой текст из блокнотика
+            if (System.IO.File.Exists(Pyt) == false)
+            {
+                MessageBox.Show("Language " + LangWay + " for the ''main'' file not found. English file will be loaded!");
+                Pyt = @"Text\eng\main.txt";
+            }
+            using (StreamReader file = new StreamReader(Pyt))
+            {
+                //Debug.WriteLine("Начинаем загружать мейн");
+                int counter = 1; //Запоминает строку
+                string ln;
+
+                while ((ln = file.ReadLine()) != null)
+                {
+                    Word[counter] = ln;
+                    counter++;
+                }
+                file.Close();
+            }
+
+            Pyt = @"Text\" + LangWay + @"\MoneyName.txt"; //Загружаем основной игровой текст из блокнотика
+            if (System.IO.File.Exists(Pyt) == false)
+            {
+                MessageBox.Show("Language " + LangWay + " for the ''MoneyName'' file not found. English file will be loaded!");
+                Pyt = @"Text\eng\MoneyName.txt";
+            }
+            using (StreamReader file = new StreamReader(Pyt))
+            {
+                //Debug.WriteLine("Начинаем загружать мейн");
+                int counter = 0; //Запоминает строку
+                string ln;
+
+                while ((ln = file.ReadLine()) != null)
+                {
+                    MoneyName[counter] = ln;
+                    counter++;
+                }
+                file.Close();
+            }
+
+            
+
+            Image StartGame = new Image(); //Кнопка "Начать игру"
+            ImageMass[1] = StartGame;
+            ImageMass[1].Width = 300;
+            ImageMass[1].Height = 60;
+            ImageMass[1].Source = new BitmapImage(new Uri(AppDomain.CurrentDomain.BaseDirectory + "Image/Button/NewGame.png", UriKind.Absolute));
+            ImageMass[1].Name = "NewGame";
+            ImageMass[1].MouseLeftButtonDown += new MouseButtonEventHandler(CatchImage);
+            Canvas.SetLeft(ImageMass[1], 550);
+            Canvas.SetTop(ImageMass[1], 335);
+            MyCanvas.Children.Add(ImageMass[1]);
+
+            Image LoadGame = new Image(); //Кнопка "Загрузить игру"
+            ImageMass[2] = LoadGame;
+            ImageMass[2].Width = 300;
+            ImageMass[2].Height = 60;
+            ImageMass[2].Source = new BitmapImage(new Uri(AppDomain.CurrentDomain.BaseDirectory + "Image/Button/LoadGame.png", UriKind.Absolute));
+            ImageMass[2].Name = "LoadGame";
+            ImageMass[2].MouseLeftButtonDown += new MouseButtonEventHandler(CatchImage);
+            Canvas.SetLeft(ImageMass[2], 550);
+            Canvas.SetTop(ImageMass[2], 405);
+            MyCanvas.Children.Add(ImageMass[2]);
+
+            Canvas GameWindown = new Canvas(); //Непосредственно игровая панель
+            CanvasMass[1] = GameWindown;
+            CanvasMass[1].Visibility = Visibility.Hidden;
+            CanvasMass[1].Width = MyCanvas.Width;
+            CanvasMass[1].Height = MyCanvas.Height;
+            Canvas.SetLeft(CanvasMass[1], 0);
+            Canvas.SetTop(CanvasMass[1], 0);
+            MyCanvas.Children.Add(CanvasMass[1]);
+
+            Button WaitMore = new Button(); //Кнопка "Ждать" 
+            ButtonMass[0] = WaitMore;
+            ButtonMass[0].Width = 200;
+            ButtonMass[0].Height = 50;
+            ButtonMass[0].Name = "Wait";
+            ButtonMass[0].Visibility = Visibility.Visible;
+            ButtonMass[0].Click += new RoutedEventHandler(CatchButton);
+            ButtonMass[0].Content = Word[2];
+            Canvas.SetLeft(ButtonMass[0], 550);
+            Canvas.SetTop(ButtonMass[0], 450);
+            CanvasMass[1].Children.Add(ButtonMass[0]);
+
+            Button Makarena = new Button(); //Кнопка "Макарена"
+            ButtonMass[3] = Makarena;
+            ButtonMass[3].Width = 100;
+            ButtonMass[3].Height = 40;
+            ButtonMass[3].Name = "Makarena";
+            ButtonMass[3].Visibility = Visibility.Visible;
+            ButtonMass[3].Click += new RoutedEventHandler(CatchButton);
+            ButtonMass[3].Content = Word[16];
+            Canvas.SetLeft(ButtonMass[3], 20);
+            Canvas.SetTop(ButtonMass[3], 600);
+            CanvasMass[1].Children.Add(ButtonMass[3]);
+
+            Button AntiMakarena = new Button(); //Кнопка "АнтиМакарена"
+            ButtonMass[4] = AntiMakarena;
+            ButtonMass[4].Width = 100;
+            ButtonMass[4].Height = 40;
+            ButtonMass[4].Name = "AntiMakarena";
+            ButtonMass[4].Visibility = Visibility.Visible;
+            ButtonMass[4].Click += new RoutedEventHandler(CatchButton);
+            ButtonMass[4].Content = Word[17];
+            Canvas.SetLeft(ButtonMass[4], 20);
+            Canvas.SetTop(ButtonMass[4], 650);
+            CanvasMass[1].Children.Add(ButtonMass[4]);
+
+            Grid ActionList = new Grid(); //Панель с кнопками боя
+            GridMass[1] = ActionList;
+            GridMass[1].Width = 190;
+            GridMass[1].Height = 900;
+            GridMass[1].ShowGridLines = true;
+            GridMass[1].ColumnDefinitions.Add(new ColumnDefinition()); //Одна единственная колонна
+            Canvas.SetLeft(GridMass[1], 10);
+            Canvas.SetTop(GridMass[1], 10);
+            //GridMass[3].Visibility = Visibility.Hidden;
+            GridMass[1].Background = new SolidColorBrush(Colors.RosyBrown);
+            //MyCanvas.Children.Add(GridMass[1]);
+
+            for (int i = 0; i < 30; i++)                                  //ТУТ КНОПКИ монет
+            {
+                RowDefinition ButtRow = new RowDefinition();
+                ButtRow.Height = new GridLength(35); //Настройки нашей строчки
+                GridMass[1].RowDefinitions.Add(ButtRow);
+
+                Button DemandAction = new Button(); //Создание кнопки боя
+                BuyMoney[i] = DemandAction;
+                BuyMoney[i].Width = 200;
+                BuyMoney[i].Height = 30;
+                BuyMoney[i].Click += new RoutedEventHandler(CatchButton);
+                BuyMoney[i].Name = "MoneyType";
+                BuyMoney[i].Content = "Тест";           //Word[29]; 
+                Grid.SetRow(BuyMoney[i], i);
+                Grid.SetColumn(BuyMoney[i], 0);
+                GridMass[1].Children.Add(BuyMoney[i]);
+            }
+
+            ScrollViewer ScrollButtonMoney = new ScrollViewer(); //Пролистываемые кнопки монет
+            ScrollMass[1] = ScrollButtonMoney;
+            ScrollMass[1].Content = GridMass[1];
+            ScrollMass[1].CanContentScroll = true;
+            ScrollMass[1].Height = 350; //Короче по логике это - сколько отображается
+            Canvas.SetLeft(ScrollMass[1], 10);
+            Canvas.SetTop(ScrollMass[1], 10);
+            CanvasMass[1].Children.Add(ScrollMass[1]); 
+
+            Canvas MenuWindows = new Canvas(); //Меню
+            CanvasMass[2] = MenuWindows;
+            CanvasMass[2].Visibility = Visibility.Hidden;
+            CanvasMass[2].Width = 400;
+            CanvasMass[2].Height = 600;
+            Canvas.SetLeft(CanvasMass[2], 300);
+            Canvas.SetTop(CanvasMass[2], 100);
+            MyCanvas.Children.Add(CanvasMass[2]);
+            ImageBrush myBrush = new ImageBrush();
+            myBrush.ImageSource = new BitmapImage(new Uri(AppDomain.CurrentDomain.BaseDirectory + "Image/Stuff/Menu.png", UriKind.Absolute));
+            CanvasMass[2].Background = myBrush; //пресловутая отдельная картинка для канваса
+
+            Image SaveGame = new Image(); //Кнопка "Сохранить игру"
+            ImageMass[3] = SaveGame;
+            ImageMass[3].Width = 380;
+            ImageMass[3].Height = 100;
+            ImageMass[3].Source = new BitmapImage(new Uri(AppDomain.CurrentDomain.BaseDirectory + "Image/Button/SaveGame.png", UriKind.Absolute));
+            ImageMass[3].Name = "SaveGame";
+            ImageMass[3].MouseLeftButtonDown += new MouseButtonEventHandler(CatchImage);
+            Canvas.SetLeft(ImageMass[3], 10);
+            Canvas.SetTop(ImageMass[3], 20);
+            CanvasMass[2].Children.Add(ImageMass[3]);
+
+            Image ExitGame = new Image(); //Кнопка "Выйти из игры"
+            ImageMass[4] = ExitGame;
+            ImageMass[4].Width = 380;
+            ImageMass[4].Height = 100;
+            ImageMass[4].Source = new BitmapImage(new Uri(AppDomain.CurrentDomain.BaseDirectory + "Image/Button/Exit.png", UriKind.Absolute));
+            ImageMass[4].Name = "ExitGame";
+            ImageMass[4].MouseLeftButtonDown += new MouseButtonEventHandler(CatchImage);
+            Canvas.SetLeft(ImageMass[4], 10);
+            Canvas.SetTop(ImageMass[4], 120);
+            CanvasMass[2].Children.Add(ImageMass[4]);
+
+            Slider HowMuchSell = new Slider(); //Слайдер скок продать
+            SliderMass[0] = HowMuchSell;
+            SliderMass[0].Name = "SliderSell";
+            SliderMass[0].Width = 300;
+            SliderMass[0].Height = 40;
+            SliderMass[0].IsSnapToTickEnabled = true;
+            SliderMass[0].TickFrequency = 1;
+            SliderMass[0].Visibility = Visibility.Hidden;
+            SliderMass[0].ValueChanged += new RoutedPropertyChangedEventHandler<double>(DragSell);
+            Canvas.SetLeft(SliderMass[0], 400);
+            Canvas.SetTop(SliderMass[0], 250);
+            CanvasMass[1].Children.Add(SliderMass[0]);
+
+            TextBlock TextSell = new TextBlock(); //Текст аля "продать"
+            TextColorMass[0] = TextSell;
+            Canvas.SetLeft(TextColorMass[0], 520);
+            Canvas.SetTop(TextColorMass[0], 190);
+            TextColorMass[0].Visibility = Visibility.Hidden;
+            CanvasMass[1].Children.Add(TextColorMass[0]);
+            TextColorMass[0].TextWrapping = TextWrapping.Wrap;
+            TextColorMass[0].Width = 780;
+            TextColorMass[0].Height = 290;
+            TextColorMass[0].Text = "ПРОДАТЬ";
+
+            TextBox BoxSell = new TextBox(); //Коробочка позволяющая вводить текст
+            BoxSell.Width = 60;
+            BoxSell.Height = 25;
+            CanvasMass[1].Children.Add(BoxSell);
+            Canvas.SetLeft(BoxSell, 480);
+            Canvas.SetTop(BoxSell, 210);
+            TextBoxMass[0] = BoxSell;
+            TextBoxMass[0].Visibility = Visibility.Hidden;
+            TextBoxMass[0].Name = "BoxSell";
+            TextBoxMass[0].TextChanged += new TextChangedEventHandler(textChangedEventHandler);
+
+            TextBlock TextSellHow = new TextBlock(); //Текст аля  (продать)"из столькото"
+            TextColorMass[2] = TextSellHow;
+            Canvas.SetLeft(TextColorMass[2], 550);
+            Canvas.SetTop(TextColorMass[2], 215);
+            TextColorMass[2].Visibility = Visibility.Hidden;
+            CanvasMass[1].Children.Add(TextColorMass[2]);
+            TextColorMass[2].TextWrapping = TextWrapping.Wrap;
+            TextColorMass[2].Width = 780;
+            TextColorMass[2].Height = 290;
+            TextColorMass[2].Text = "из столькото";
+
+            Button SellButt = new Button(); //Кнопка "Продать" 
+            ButtonMass[1] = SellButt;
+            ButtonMass[1].Width = 200;
+            ButtonMass[1].Height = 40;
+            ButtonMass[1].Name = "Sell";
+            ButtonMass[1].Visibility = Visibility.Hidden;
+            ButtonMass[1].Click += new RoutedEventHandler(CatchButton);
+            ButtonMass[1].Content = Word[10];
+            Canvas.SetLeft(ButtonMass[1], 480);
+            Canvas.SetTop(ButtonMass[1], 300);
+            CanvasMass[1].Children.Add(ButtonMass[1]);
+
+            Slider HowMuchBuy = new Slider(); //Слайдер скок купить
+            SliderMass[1] = HowMuchBuy;
+            SliderMass[1].Name = "SliderBuy";
+            SliderMass[1].Width = 300;
+            SliderMass[1].Height = 40;
+            SliderMass[1].Visibility = Visibility.Hidden;
+            SliderMass[1].IsSnapToTickEnabled = true;
+            SliderMass[1].TickFrequency = 1;
+            //SliderMass[0].Visibility = Visibility.Hidden;
+            SliderMass[1].ValueChanged += new RoutedPropertyChangedEventHandler<double>(DragSell);
+            Canvas.SetLeft(SliderMass[1], 400);
+            Canvas.SetTop(SliderMass[1], 85);
+            CanvasMass[1].Children.Add(SliderMass[1]);
+
+            TextBlock TextBuy = new TextBlock(); //Текст аля "купить"
+            TextColorMass[1] = TextBuy;
+            Canvas.SetLeft(TextColorMass[1], 520);
+            Canvas.SetTop(TextColorMass[1], 20);
+            TextColorMass[1].Visibility = Visibility.Hidden;
+            CanvasMass[1].Children.Add(TextColorMass[1]);
+            TextColorMass[1].TextWrapping = TextWrapping.Wrap;
+            TextColorMass[1].Width = 780;
+            TextColorMass[1].Height = 290;
+            TextColorMass[1].Text = "КУПИТЬ";
+
+            TextBox BoxBuy = new TextBox(); //Коробочка позволяющая вводить текст
+            BoxBuy.Width = 60;
+            BoxBuy.Height = 25;
+            CanvasMass[1].Children.Add(BoxBuy);
+            Canvas.SetLeft(BoxBuy, 480);
+            Canvas.SetTop(BoxBuy, 50);
+            TextBoxMass[1] = BoxBuy;
+            TextBoxMass[1].Visibility = Visibility.Hidden;
+            TextBoxMass[1].Name = "BoxBuy";
+            TextBoxMass[1].TextChanged += new TextChangedEventHandler(textChangedEventHandler);
+
+            TextBlock TextBuyHow = new TextBlock(); //Текст аля  (купить)"из столькото"
+            TextColorMass[3] = TextBuyHow;
+            Canvas.SetLeft(TextColorMass[3], 550);
+            Canvas.SetTop(TextColorMass[3], 55);
+            TextColorMass[3].Visibility = Visibility.Hidden;
+            CanvasMass[1].Children.Add(TextColorMass[3]);
+            TextColorMass[3].TextWrapping = TextWrapping.Wrap;
+            TextColorMass[3].Width = 780;
+            TextColorMass[3].Height = 290;
+            TextColorMass[3].Text = "из столькото";
+
+            Button BuyButt = new Button(); //Кнопка "Купить" 
+            ButtonMass[2] = BuyButt;
+            ButtonMass[2].Width = 200;
+            ButtonMass[2].Height = 40;
+            ButtonMass[2].Name = "Buy";
+            ButtonMass[2].Visibility = Visibility.Hidden;
+            ButtonMass[2].Click += new RoutedEventHandler(CatchButton);
+            ButtonMass[2].Content = Word[9];
+            Canvas.SetLeft(ButtonMass[2], 480);
+            Canvas.SetTop(ButtonMass[2], 120);
+            CanvasMass[1].Children.Add(ButtonMass[2]);
+
+            Image ImageMoney = new Image(); //Картинка денег
+            ImageMass[5] = ImageMoney;
+            ImageMass[5].Width = 100;
+            ImageMass[5].Height = 100;
+            ImageMass[5].Visibility = Visibility.Hidden;
+            ImageMass[5].Source = new BitmapImage(new Uri(AppDomain.CurrentDomain.BaseDirectory + "Image/Money/0.png", UriKind.Absolute));
+            ImageMass[5].Name = "ExitGame";
+            Canvas.SetLeft(ImageMass[5], 250);
+            Canvas.SetTop(ImageMass[5], 10);
+            CanvasMass[1].Children.Add(ImageMass[5]);
+
+            TextBlock MoneyInfo = new TextBlock(); //Инфа о валюте
+            TextColorMass[7] = MoneyInfo;
+            Canvas.SetLeft(TextColorMass[7], 250);
+            Canvas.SetTop(TextColorMass[7], 130);
+            CanvasMass[1].Children.Add(TextColorMass[7]);
+            TextColorMass[7].TextWrapping = TextWrapping.Wrap;
+            TextColorMass[7].Visibility = Visibility.Hidden;
+            //TextColorMass[5].Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+            TextColorMass[7].FontSize = 20;
+            TextColorMass[7].Width = 150;
+            TextColorMass[7].Height = 300;
+            TextColorMass[7].Text = "ИНФА";
+
+            TextBlock Balance = new TextBlock(); //Кол. денег
+            TextColorMass[4] = Balance;
+            Canvas.SetLeft(TextColorMass[4], 20);
+            Canvas.SetTop(TextColorMass[4], 380);
+            CanvasMass[1].Children.Add(TextColorMass[4]);
+            TextColorMass[4].TextWrapping = TextWrapping.Wrap;
+            TextColorMass[4].Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+            TextColorMass[4].FontSize = 20;
+            TextColorMass[4].Width = 130;
+            TextColorMass[4].Height = 190;
+            TextColorMass[4].Text = "БАЛАНС";
+
+            Canvas NewsWindows = new Canvas(); //Меню
+            CanvasMass[0] = NewsWindows;
+            //CanvasMass[0].Visibility = Visibility.Hidden;
+            CanvasMass[0].Width = 300;
+            CanvasMass[0].Height = 1500;
+            Canvas.SetLeft(CanvasMass[0], 0);
+            Canvas.SetTop(CanvasMass[0], 0);
+            //CanvasMass[1].Children.Add(CanvasMass[0]);
+            ImageBrush myBrush2 = new ImageBrush();
+            myBrush2.ImageSource = new BitmapImage(new Uri(AppDomain.CurrentDomain.BaseDirectory + "Image/Stuff/Notebook.png", UriKind.Absolute));
+            CanvasMass[0].Background = myBrush2; //пресловутая отдельная картинка для канваса
+
+            ScrollViewer ScrollButtonNews = new ScrollViewer(); //Пролистываемые кнопки монет
+            ScrollMass[0] = ScrollButtonNews;
+            ScrollMass[0].Content = CanvasMass[0];
+            ScrollMass[0].CanContentScroll = true;
+            ScrollMass[0].Height = 500; //Короче по логике это - сколько отображается
+            Canvas.SetLeft(ScrollMass[0], 1050);
+            Canvas.SetTop(ScrollMass[0], 10);
+            CanvasMass[1].Children.Add(ScrollMass[0]);
+
+            TextBlock NewsHead = new TextBlock(); //Заголовок газеты
+            TextColorMass[5] = NewsHead;
+            Canvas.SetLeft(TextColorMass[5], 10);
+            Canvas.SetTop(TextColorMass[5], 10);
+            CanvasMass[0].Children.Add(TextColorMass[5]);
+            TextColorMass[5].TextWrapping = TextWrapping.Wrap;
+            TextColorMass[5].Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Gray");
+            TextColorMass[5].FontSize = 22;
+            TextColorMass[5].Width = 280;
+            TextColorMass[5].Height = 300;
+            TextColorMass[5].Text = Word[15];
+
+            TextBlock News = new TextBlock(); //Текст новостей
+            TextColorMass[6] = News;
+            Canvas.SetLeft(TextColorMass[6], 10);
+            Canvas.SetTop(TextColorMass[6], 45);
+            CanvasMass[0].Children.Add(TextColorMass[6]);
+            TextColorMass[6].TextWrapping = TextWrapping.Wrap;
+            TextColorMass[6].Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+            TextColorMass[6].FontSize = 12;
+            TextColorMass[6].Width = 280;
+            TextColorMass[6].Height = 1300;
+            TextColorMass[6].Text = "";
+        }
+
+        public void UpdateMoney()
+        {
+            //Тут должны быть действия которые проверяют, существует ли валюта шас или нет
+            int u = 0; //Последняя кнопка
+            for (int i = 0; i < 30; i++)
+            {
+                BuyMoney[i].Visibility = Visibility.Hidden; //Перед проверкой прячем кнопку. Если все валюты по какой то причине отсутствуют - все кнопки будут невидимыми.
+                if (Status[i] != 0)
+                {
+                    BuyMoney[u].Name = "MoneyType" + i;
+                    BuyMoney[u].Content = MoneyName[i] + " [" + Price[i] + "]";
+                    BuyMoney[u].Visibility = Visibility.Visible;
+                    u++;
+                }
+            }
+            GridMass[1].Height = u * 35;
+        }
+
+        private void textChangedEventHandler(object sender, TextChangedEventArgs args)
+        {
+            //отлавливаем изменение текстбокса
+            string name = ((TextBox)sender).Name;
+            System.Console.WriteLine("Отловили текстбокс " + name);
+            if (name == "BoxSell")
+            {
+                try
+                {
+                    //Сравниваем со слайдером и меняем если нет   
+                    int i = Convert.ToInt32(TextBoxMass[0].Text);
+                    if (SliderMass[0].Value != i)
+                    {
+                        if (SliderMass[0].Maximum < i)
+                        {
+                            TextBoxMass[0].Text = "" + SliderMass[0].Maximum;
+                        }
+                        else
+                        {
+                            SliderMass[0].Value = i;
+                        }
+                    }
+                }
+                catch
+                {
+                    //Меняем на единицу
+                    TextBoxMass[0].Text = "1";
+                    SliderMass[0].Value = 1;
+                }
+            }
+            if (name == "BoxBuy")
+            {
+                try
+                {
+                    //Сравниваем со слайдером и меняем если нет   
+                    int i = Convert.ToInt32(TextBoxMass[1].Text);
+                    if (SliderMass[1].Value != i)
+                    {
+                        if (SliderMass[1].Maximum < i)
+                        {
+                            TextBoxMass[1].Text = "" + SliderMass[1].Maximum;
+                        }
+                        else
+                        {
+                            SliderMass[1].Value = i;
+                        }
+                    }
+                }
+                catch
+                {
+                    //Меняем на единицу
+                    TextBoxMass[1].Text = "1";
+                    SliderMass[1].Value = 1;
+                }
+            }
+        }
+
+        public void UpdateBuyingText()
+        {
+            if (IDm >= 0)
+            {
+                //Мы уже на чето нажали
+                TextColorMass[2].Text = Word[8] + Money[IDm];
+                TextColorMass[3].Text = Word[8] + Convert.ToInt32(RealMoney / Price[IDm]);
+                SliderMass[0].Maximum = Money[IDm];
+                SliderMass[1].Maximum = Convert.ToInt32(RealMoney / Price[IDm]);
+                SliderMass[1].Value = 0;
+                SliderMass[0].Value = 0;
+                TextBoxMass[0].Text = "1";
+                TextBoxMass[1].Text = "1";
+
+                if (RealMoney >= Price[IDm])
+                {
+                    //Мы можем себе позволить её купить, показать ползунок с покупкой
+                    TextColorMass[1].Visibility = Visibility.Visible;
+                    TextColorMass[1].Text = Word[6];
+                    TextColorMass[3].Visibility = Visibility.Visible;
+                    TextBoxMass[1].Visibility = Visibility.Visible;
+                    TextBoxMass[1].Text = "" + SliderMass[1].Value;
+                    SliderMass[1].Visibility = Visibility.Visible;
+                    ButtonMass[2].Visibility = Visibility.Visible;
+                }
+                else
+                {
+                    TextColorMass[1].Visibility = Visibility.Hidden;
+                    TextColorMass[3].Visibility = Visibility.Hidden;
+                    TextBoxMass[1].Visibility = Visibility.Hidden;
+                    SliderMass[1].Visibility = Visibility.Hidden;
+                    ButtonMass[2].Visibility = Visibility.Hidden;
+                }
+                if (Money[IDm] >= 1)
+                {
+                    //У нас уже есть эта валюта, можем её продать
+                    TextColorMass[2].Visibility = Visibility.Visible;
+                    TextColorMass[0].Text = Word[7];
+                    TextColorMass[0].Visibility = Visibility.Visible;
+                    TextBoxMass[0].Visibility = Visibility.Visible;
+                    TextBoxMass[0].Text = "" + SliderMass[0].Value;
+                    SliderMass[0].Visibility = Visibility.Visible;
+                    ButtonMass[1].Visibility = Visibility.Visible;
+                }
+                else
+                {
+                    TextColorMass[2].Visibility = Visibility.Hidden;
+                    TextColorMass[0].Visibility = Visibility.Hidden;
+                    TextBoxMass[0].Visibility = Visibility.Hidden;
+                    SliderMass[0].Visibility = Visibility.Hidden;
+                    ButtonMass[1].Visibility = Visibility.Hidden;
+                }
+                if (Money[IDm] < 1 && RealMoney < Price[IDm])
+                {
+                    //Ни купить, ни продать
+                    TextColorMass[1].Visibility = Visibility.Visible;
+                    TextColorMass[1].Text = Word[4];
+                }
+
+
+                TextColorMass[7].Text = "";//Сбрасываем текст
+                TextColorMass[7].Visibility = Visibility.Visible;
+
+                string[] StatusText = new string[20];
+                string Pyt = @"Text\" + LangWay + @"\status.txt";
+                if (System.IO.File.Exists(Pyt) == false)
+                {
+                    MessageBox.Show("Language " + LangWay + " for the ''status'' file not found. English file will be loaded!");
+                    Pyt = @"Text\eng\status.txt";
+                }
+                using (StreamReader file = new StreamReader(Pyt))
+                {
+                    //Debug.WriteLine("Начинаем загружать мейн");
+                    int counter = 1; //Запоминает строку
+                    string ln;
+
+                    while ((ln = file.ReadLine()) != null)
+                    {
+                        StatusText[counter] = ln;
+                        counter++;
+                    }
+                    file.Close();
+                }
+
+                Brush Color = Brushes.Black; //Цвет диалога
+                //string Bald = "Times New Roman";
+                //FontStyle Star = FontStyles.Normal;   
+                Run run2 = new Run(Word[11]);
+                run2.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                run2.FontSize = 14;
+                run2.FontWeight = FontWeights.Heavy;
+                //run.FontFamily = new FontFamily(Bald);
+                TextColorMass[7].Inlines.Add(run2);
+                TextColorMass[7].Inlines.Add(new LineBreak());
+
+                run2 = new Run(StatusText[Status[IDm]]);
+                run2.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                run2.FontWeight = FontWeights.Bold;
+                TextColorMass[7].Inlines.Add(run2);
+                TextColorMass[7].Inlines.Add(new LineBreak());
+
+                run2 = new Run(Word[12]);
+                run2.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                run2.FontWeight = FontWeights.Heavy;
+                TextColorMass[7].Inlines.Add(run2);
+                TextColorMass[7].Inlines.Add(new LineBreak());
+
+                run2 = new Run("" + Money[IDm]);
+                run2.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                run2.FontWeight = FontWeights.Bold;
+                TextColorMass[7].Inlines.Add(run2);
+            }
+
+            TextColorMass[4].Text = Word[5] + ":\n";
+
+            Run run = new Run("" + RealMoney + "$\n");
+            run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+            TextColorMass[4].Inlines.Add(run);
+
+            run = new Run(Word[14]);
+            run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Blue");
+            TextColorMass[4].Inlines.Add(run);
+
+            run = new Run("" + Day);
+            run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+            TextColorMass[4].Inlines.Add(run);
+        }
+        public object EventCheck(int ID)
+        {
+
+            return true;
+        }
+        public void MenuShow()
+        {
+            //Показ меню с кнопкой "Выхода" и "Сохранения"
+            if (CanvasMass[2].Visibility == Visibility.Visible)
+            {
+                //Меню открыто
+                CanvasMass[2].Visibility = Visibility.Hidden;
+            }
+            else
+            {
+                //Меню закрыто
+                CanvasMass[2].Visibility = Visibility.Visible;
+            }
+            //Думайте
+        }
+
+        public object AddNews(int news, int ID)
+        {
+            //Тут будет "формироваться" строчка добавленная в новости
+            string[] NewsText = new string[100];
+
+            string Pyt = @"Text\" + LangWay + @"\news.txt"; //Загружаем основной игровой текст из блокнотика
+            if (System.IO.File.Exists(Pyt) == false)
+            {
+                //MessageBox.Show("Language " + LangWay + " for the ''news'' file not found. English file will be loaded!");
+                Pyt = @"Text\eng\news.txt";
+            }
+            using (StreamReader file = new StreamReader(Pyt))
+            {
+                //Debug.WriteLine("Начинаем загружать мейн");
+                int counter = 0; //Запоминает строку
+                string ln;
+
+                while ((ln = file.ReadLine()) != null)
+                {
+                    NewsText[counter] = ln;
+                    counter++;
+                }
+                file.Close();
+            }
+
+            Run run = new Run(">");
+            TextColorMass[6].Inlines.Add(run);
+
+            if (news == 1)
+            {
+                run = new Run(NewsText[0]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(MoneyName[ID]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(NewsText[1] + "\n");
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+            } //Валюта вернулась как обычная
+            if (news == 2)
+            {
+                run = new Run(NewsText[2]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(MoneyName[ID]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(NewsText[3] + "\n");
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+            } //Валюта вернулась как блокчейн
+            if (news == 3)
+            {
+                run = new Run(NewsText[4]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(MoneyName[ID]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(NewsText[5] + "\n");
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+            } //Валюта попала под санкции с нихуя
+            if (news == 4)
+            {
+                run = new Run(NewsText[6]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(MoneyName[ID]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(NewsText[7] + "\n");
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+            } //Стагнация в стране валюты ID с нихуя
+            if (news == 5)
+            {
+                int i = rnd.Next(1, 4);
+                if (i == 1)
+                {
+                    run = new Run(NewsText[8]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[9] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+                if (i == 2)
+                {
+                    run = new Run(NewsText[8]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[10] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+                if (i == 3)
+                {
+                    run = new Run(NewsText[11]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[12] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+
+            } //В стране начались военные действия
+            if (news == 6)
+            {
+                int i = rnd.Next(1, 3);
+                if (i == 1)
+                {
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[13] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+                if (i == 2)
+                {
+                    run = new Run(NewsText[8]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[14] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+
+            } //В стране развивается кризис
+            if (news == 7)
+            {
+                run = new Run(NewsText[15]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(MoneyName[ID]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(NewsText[16] + "\n");
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+            } //Со страны сняли санкции
+            if (news == 8)
+            {
+                int i = rnd.Next(1, 4);
+                if (i == 1)
+                {
+                    run = new Run(NewsText[17]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[18] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+                if (i == 2)
+                {
+                    run = new Run(NewsText[17]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[19] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+                if (i == 3)
+                {
+                    run = new Run(NewsText[20]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[21] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+            } //Страна была признана террористом / изгнана из ООН / впала в глубокую изоляцию
+            if (news == 9)
+            {
+                run = new Run(NewsText[22]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(MoneyName[ID]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(NewsText[23] + "\n");
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+            } //Санкции сняли, но экономике всё равно пиздец
+            if (news == 10)
+            {
+                int i = rnd.Next(1, 4);
+                if (i == 1)
+                {
+                    run = new Run(NewsText[17]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[24] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+                if (i == 2)
+                {
+                    run = new Run(NewsText[17]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[25] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+                if (i == 3)
+                {
+                    run = new Run(NewsText[4]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[26] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+            } //Страна вернулась в ООН / правительство взяло курс на "либерализм" / правительство признал Китай или РФ
+            if (news == 11)
+            {
+                int i = rnd.Next(1, 3);
+                if (i == 1)
+                {
+                    run = new Run(NewsText[4]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[27] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+                if (i == 2)
+                {
+                    run = new Run(NewsText[8]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[28] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+            } //Непризнанная страна напала на другую и делает успехи?
+            if (news == 12)
+            {
+                run = new Run(NewsText[29]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(MoneyName[ID]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(NewsText[30] + "\n");
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+            } //Крипта такая то вышла из под запрета
+            if (news == 13)
+            {
+                int i = rnd.Next(1, 4);
+                if (i == 1)
+                {
+                    run = new Run(NewsText[29]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[31] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+                if (i == 2)
+                {
+
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[32] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+                if (i == 3)
+                {
+                    run = new Run(NewsText[33]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[34] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+            } //Крипта начала раздуваться
+            if (news == 14)
+            {
+                int i = rnd.Next(1, 3);
+                if (i == 1)
+                {
+                    run = new Run(NewsText[35]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[36] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+                if (i == 2)
+                { 
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[37] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+            } //Крипта попала под запрет
+            if (news == 15)
+            {
+                int i = rnd.Next(1, 3);
+                if (i == 1)
+                {
+                    run = new Run(NewsText[38]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[39] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+                if (i == 2)
+                {
+                    run = new Run(NewsText[40]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[41] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+            } //Была поднята тема о легализации валюты
+            if (news == 16)
+            {
+                run = new Run(NewsText[42]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(MoneyName[ID]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(NewsText[43] + "\n");
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+            } //Крипту начало колбасить
+            if (news == 17)
+            {
+                int i = rnd.Next(1, 5);
+                if (i == 1)
+                {
+
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[44] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+                if (i == 2)
+                {
+
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[45] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+                if (i == 3)
+                {
+                    run = new Run(NewsText[46]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[47] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+                if (i == 4)
+                {
+                    run = new Run(NewsText[48]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[49] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+            } //Крипта накрылось (тут рандом точно нужно вставить аля спиздил деньги, просто кто то миллионы продал и т.д.)
+            if (news == 18)
+            {
+                int i = rnd.Next(1, 3);
+                if (i == 1)
+                {
+
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[50] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+                if (i == 2)
+                {
+                    run = new Run(NewsText[51]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[52] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+            } //На фоне роста крипты пошли дебаты о её легализации
+            if (news == 19)
+            {
+                run = new Run(NewsText[53]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(MoneyName[ID]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(NewsText[54] + "\n");
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+            } //Суд такой то страны признал случай с криптой незаконным и запретил в стране, за ним повторили другие
+            if (news == 20)
+            {
+                run = new Run(NewsText[33]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(MoneyName[ID]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(NewsText[55] + "\n");
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+            } //Крипта стабилизировалась после падения
+            if (news == 21)
+            {
+                run = new Run(NewsText[29]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(MoneyName[ID]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(NewsText[56] + "\n");
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+            } //Крипта закончила рост и теперь её колбасит
+            if (news == 22)
+            {
+                int i = rnd.Next(1, 3);
+                if (i == 1)
+                {
+                    run = new Run(NewsText[17]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[57] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+                if (i == 2)
+                {
+                    run = new Run(NewsText[4]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[58] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+            } //Война кончилась, началось восстановление
+            if (news == 23)
+            {
+                int i = rnd.Next(1, 3);
+                if (i == 1)
+                {
+                    run = new Run(NewsText[59]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[60] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+                if (i == 2)
+                {
+                    run = new Run(NewsText[61]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(MoneyName[ID]);
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                    TextColorMass[6].Inlines.Add(run);
+
+                    run = new Run(NewsText[62] + "\n");
+                    run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                    TextColorMass[6].Inlines.Add(run);
+                }
+            } //Военные действия в стране Х закончились без серьёзных потерь
+            if (news == 24)
+            {
+                run = new Run(NewsText[59]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(MoneyName[ID]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(NewsText[63] + "\n");
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+            } //Война в стране кончилась поражением, вспыхнул политический кризис
+            if (news == 25)
+            {
+                run = new Run(NewsText[64]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(MoneyName[ID]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(NewsText[65] + "\n");
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+            } //Из-за расстрела протестующих / эмбарго и прочих кризисных шоколадок страна попала под санкции
+            if (news == 26)
+            {
+                run = new Run(NewsText[66]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(MoneyName[ID]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(NewsText[67] + "\n");
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+            } //Политический кризис в стране перерос в гражданскую войну
+            if (news == 27)
+            {
+                run = new Run(NewsText[68]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(MoneyName[ID]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(NewsText[69] + "\n");
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+            } //Кризис в стране удалось решить
+            if (news == 28)
+            {
+                run = new Run(NewsText[68]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(MoneyName[ID]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(NewsText[70] + "\n");
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+            } //Страна больше не привлекает инвестиции для восстановления, рост валюты замедлился
+            if (news == 29)
+            {
+                run = new Run(NewsText[68]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(MoneyName[ID]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(NewsText[71] + "\n");
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+            } //Страна попала в ловушку средних доходов
+            if (news == 30)
+            {
+                run = new Run(NewsText[72]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(MoneyName[ID]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(NewsText[73] + "\n");
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+            } //Стагнация экономики вызвала политический кризис
+            if (news == 31)
+            {
+                run = new Run(NewsText[74]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(MoneyName[ID]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(NewsText[75] + "\n");
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+            } //Экономика страны Х вновь начала показывать рост
+            if (news == 32)
+            {
+                run = new Run(NewsText[33]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(MoneyName[ID]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(NewsText[76] + "\n");
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+            } //Валюта была успешно легализована и принята одной из стран
+            if (news == 33)
+            {
+                run = new Run(NewsText[77]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(MoneyName[ID]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(NewsText[78] + "\n");
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+            } //Переговры о легализации валюты привели к её падению - нелегалы стали выводить деньги
+            if (news == 34)
+            {
+                run = new Run(NewsText[79]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(MoneyName[ID]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(NewsText[80] + "\n");
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+            } //На фоне новости о легализации криптовалюта стала испытывать большой рост
+            if (news == 35)
+            {
+                run = new Run(NewsText[77]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(MoneyName[ID]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(NewsText[81] + "\n");
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+            } //Переговоры о легализации зашли в тупик
+            if (news == 36)
+            {
+                run = new Run(NewsText[77]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(MoneyName[ID]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(NewsText[82] + "\n");
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+            } //Переговоры о легализации крипты дали обратный эффекти валюта стала запрещена
+            if (news == 37)
+            {
+                run = new Run(NewsText[83]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(MoneyName[ID]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(NewsText[84] + "\n");
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+            } //Крипта стала показывать слишком уверенный рост
+            if (news == 38)
+            {
+                run = new Run(NewsText[85]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(MoneyName[ID]);
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Green");
+                TextColorMass[6].Inlines.Add(run);
+
+                run = new Run(NewsText[86] + "\n");
+                run.Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("Black");
+                TextColorMass[6].Inlines.Add(run);
+            } //Крипта стала показывать падения из-за резонансной новости...
+
+
+            return true;
+        }
+
+
+        public void ChangePrice()
+        {
+            for (int i = 0; i < 30; i++)
+            {
+                if (Status[i] > 0)
+                {
+                    int add = 0;
+                    switch (Status[i])
+                    {
+                        case 1:
+                            //Обычный
+                            add = rnd.Next(-1, 2);
+                            if (rnd.Next(0, 101) == 1)
+                            {
+                                Status[i] = 2;
+                                AddNews(3, i);
+                            } //1% шанс попасть под санкции
+                            else
+                            {
+                                if (rnd.Next(0, 101) == 1)
+                                {
+                                    Status[i] = 11;
+                                    AddNews(4, i);
+                                } //1% шанс попасть под стагнацию
+                                else
+                                {
+                                    if (rnd.Next(0, 201) == 1)
+                                    {
+                                        Status[i] = 8;
+                                        AddNews(5, i);
+                                    } //0,5% шанс начать войну
+                                    else
+                                    {
+                                        if (rnd.Next(0, 201) == 1)
+                                        {
+                                            Status[i] = 9;
+                                            AddNews(6, i);
+                                        } //0,5% шанс начать кризис
+                                    }
+                                }
+                            }
+                            break;
+                        case 2:
+                            //Санкции
+                            add = rnd.Next(-2, 2);
+                            if (rnd.Next(0, 401) == 1)
+                            {
+                                Status[i] = 1;
+                                AddNews(7, i);
+                            } //0,25% шанс что все нормализуется
+                            else
+                            {
+                                if (rnd.Next(0, 201) == 1)
+                                {
+                                    Status[i] = 3;
+                                    AddNews(8, i);
+                                } //0,5% шанс что все станет хуже
+                                else
+                                {
+                                    if (rnd.Next(0, 1001) == 1)
+                                    {
+                                        Status[i] = 8;
+                                        AddNews(5, i);
+                                    } //0,1% шанс что начнется война
+                                    else
+                                    {
+                                        if (rnd.Next(0, 1001) == 1)
+                                        {
+                                            Status[i] = 11;
+                                            AddNews(9, i);
+                                        } //0,1% шанс что начнется стагнация
+                                    }
+                                }
+                            }
+                            break;
+                        case 3:
+                            //Запрещена
+                            add = rnd.Next(-3, 2);
+                            if (rnd.Next(0, 101) == 1)
+                            {
+                                Status[i] = 2;
+                                AddNews(10, i);
+                            } //1% шанс что все "улучшится"
+                            else
+                            {
+                                if (rnd.Next(0, 201) == 1)
+                                {
+                                    Status[i] = 8;
+                                    AddNews(11, i);
+                                } //0,5% шанс что начнется война
+                            }
+                            break;
+                        case 4:
+                            //Нелегальна
+                            add = rnd.Next(-2, 1);
+                            if (rnd.Next(0, 101) == 1)
+                            {
+                                Status[i] = 5;
+                                AddNews(12, i);
+                            } //1% шанс что вернутся к "норме"
+                            break;
+                        case 5:
+                            //Не подкреплена
+                            add = rnd.Next(-2, 2);
+                            if (rnd.Next(0, 101) == 1)
+                            {
+                                Status[i] = 6;
+                                AddNews(13, i);
+                            } //1% шанс что раздуется
+                            else
+                            {
+                                if (rnd.Next(0, 501) == 1)
+                                {
+                                    Status[i] = 4;
+                                    AddNews(14, i);
+                                } //0,2% шанс что станет нелегальной
+                                else
+                                {
+                                    if (rnd.Next(0, 1001) == 1)
+                                    {
+                                        Status[i] = 12;
+                                        AddNews(15, i);
+                                    } //0.1% шанс что начнутся дебаты
+                                    else
+                                    {
+                                        if (rnd.Next(0, 101) == 1)
+                                        {
+                                            Status[i] = 13;
+                                            AddNews(16, i);
+                                        } //1% шанс что начнет скакать
+                                    }
+                                }
+                            }
+                            break;
+                        case 6:
+                            //Раздувается
+                            add = rnd.Next(1, 4);
+                            if (rnd.Next(0, 16) == 1)
+                            {
+                                Status[i] = 7;
+                                AddNews(17, i);
+                            } //7,5% шанс что лопнет
+                            else
+                            {
+                                if (rnd.Next(0, 101) == 1)
+                                {
+                                    Status[i] = 12;
+                                    AddNews(18, i);
+                                } //1% шанс что начнутся дебаты
+                            }
+                            break;
+                        case 7:
+                            //Лопнула
+                            add = rnd.Next(-7, -1);
+                            if (rnd.Next(0, 21) == 1)
+                            {
+                                Status[i] = 4;
+                                AddNews(19, i);
+                            } //5% шанс что станет нелегальной
+                            else
+                            {
+                                if (rnd.Next(0, 101) == 1)
+                                {
+                                    Status[i] = 5;
+                                    AddNews(20, i);
+                                } //1% шанс что вернется в норму
+                                else
+                                {
+                                    if (rnd.Next(0, 51) == 1)
+                                    {
+                                        Status[i] = 13;
+                                        AddNews(21, i);
+                                    } //2% шанс что начнет скакать
+                                }
+                            }
+                            break;
+                        case 8:
+                            //Война
+                            add = rnd.Next(-3, 2);
+                            if (rnd.Next(0, 51) == 1)
+                            {
+                                Status[i] = 10;
+                                AddNews(22, i);
+                            } //2% шанс что станет восстанавливаться
+                            else
+                            {
+                                if (rnd.Next(0, 101) == 1)
+                                {
+                                    Status[i] = 1;
+                                    AddNews(23, i);
+                                } //1% шанс что станет нормой
+                                else
+                                {
+                                    if (rnd.Next(0, 201) == 1)
+                                    {
+                                        Status[i] = 9;
+                                        AddNews(24, i);
+                                    } //0,5% шанс что станет кризис
+                                }
+                            }
+                            break;
+                        case 9:
+                            //Кризис
+                            add = rnd.Next(-2, 1);
+                            if (rnd.Next(0, 51) == 1)
+                            {
+                                Status[i] = 2;
+                                AddNews(25, i);
+                            } //2% шанс что станет санкциями
+                            else
+                            {
+                                if (rnd.Next(0, 26) == 1)
+                                {
+                                    Status[i] = 8;
+                                    AddNews(26, i);
+                                } //4% шанс что станет войной
+                                else
+                                {
+                                    if (rnd.Next(0, 51) == 1)
+                                    {
+                                        Status[i] = 1;
+                                        AddNews(27, i);
+                                    } //2% шанс что станет нормой
+                                }
+                            }          
+                            break;
+                        case 10:
+                            //Восстанавливается
+                            add = rnd.Next(0, 2);
+                            if (rnd.Next(0, 101) == 1)
+                            {
+                                Status[i] = 1;
+                                AddNews(28, i);
+                            } //1% шанс что станет нормой
+                            if (rnd.Next(0, 101) == 1)
+                            {
+                                Status[i] = 11;
+                                AddNews(29,i);
+                            } //1% шанс что станет стагнацией
+                            break;
+                        case 11:
+                            //Стагнация
+                            add = 0;
+                            if (rnd.Next(0, 26) == 1)
+                            {
+                                Status[i] = 9;
+                                AddNews(30, i);
+                            } //4% шанс что станет кризисом
+                            else
+                            {
+                                if (rnd.Next(0, 101) == 1)
+                                {
+                                    Status[i] = 1;
+                                    AddNews(31, i);
+                                } //1% шанс что станет нормой
+                            } 
+                            break;
+                        case 12:
+                            //Легализация?
+                            add = rnd.Next(0, 2);
+                            if (rnd.Next(0, 101) == 1)
+                            {
+                                Status[i] = 1;
+                                AddNews(32, i);
+                            } //1% шанс что станет нормой
+                            else
+                            {
+                                if (rnd.Next(0, 21) == 1)
+                                {
+                                    Status[i] = 7;
+                                    AddNews(33, i);
+                                } //5% шанс что лопнет
+                                else
+                                {
+                                    if (rnd.Next(0, 101) == 1)
+                                    {
+                                        Status[i] = 6;
+                                        AddNews(34, i);
+                                    } //1% шанс что раздуется
+                                    else;
+                                    {
+                                        if (rnd.Next(0, 101) == 1)
+                                        {
+                                            Status[i] = 6;
+                                            AddNews(35, i);
+                                        } //1% шанс что вернется к неподкрепленной
+                                        else
+                                        {
+                                            if (rnd.Next(0, 101) == 1)
+                                            {
+                                                Status[i] = 4;
+                                                AddNews(36, i);
+                                            } //1% шанс что станет нелегальной
+                                        }
+                                    }
+                                }
+                            } 
+                            break;
+                        case 13:
+                            //Скачки
+                            add = rnd.Next(-3, 4);
+                            if (rnd.Next(0, 101) == 1)
+                            {
+                                Status[i] = 6;
+                                AddNews(37, i);
+                            } //1% шанс что раздуется
+                            else
+                            {
+                                if (rnd.Next(0, 101) == 1)
+                                {
+                                    Status[i] = 4;
+                                    AddNews(14, i);
+                                } //1% шанс что станет нелегальной
+                                else
+                                {
+                                    if (rnd.Next(0, 101) == 1)
+                                    {
+                                        Status[i] = 7;
+                                        AddNews(38, i);
+                                    } //1% шанс что лопнет
+                                }
+                            }
+                            break;
+                    }
+
+                    Price[i] += PriceChange[i, 0] + add;
+                    if (Price[i] <= 0)
+                    {
+                        if (rnd.Next(0, 11) != 1)
+                        {
+                            Price[i] = 1;
+                        }
+                        else
+                        {
+                            //с 10% шансом валюта "удаляется" если она слишком обесценилась
+                            Status[i] = 0;
+                            Money[i] = 0;
+                            Price[i] = 1;
+                        }
+                    }
+                    for (int x = 0; x < 4; x++)
+                    {
+                        PriceChange[i, x] = PriceChange[i, x + 1];
+                    }
+                }
+                else
+                {
+                    if (rnd.Next(0,401) == 1)
+                    {
+                        //0,25% шанс каждый ход что валюта "вернется" в игру как обычная
+                        Status[i] = 1;
+                        Price[i] = rnd.Next(5, 21);
+                        AddNews(1, i);
+                    }
+                    else 
+                    {
+                        if (rnd.Next(0, 401) == 1)
+                        {
+                            //0,25% шанс каждый ход что валюта "вернется" в игру как крипта
+                            Status[i] = 5;
+                            Price[i] = rnd.Next(5, 21);
+                            AddNews(2, i);
+                        }
+                    }
+                }
+                
+            }
+        }
+
+        public void StartGameSetting()
+        {
+            Price[0] = 30;
+            Price[1] = 90;
+            Price[2] = 40;
+            Price[3] = 56;
+            Price[4] = 75;
+            Money[1] = 1;
+            RealMoney = 1000;
+            for (int i = 0; i < 5; i++)
+            {
+                Status[i] = 1; //Первые 5 валют всегда есть
+                
+            }
+            for (int i = 5; i < 30; i++)
+            {
+                if (rnd.Next(0,5) == 1)
+                {
+                    Status[i] = 0;
+                }
+                else
+                {
+                    Status[i] = rnd.Next(1, 14);
+                }
+                
+                Price[i] = rnd.Next(5,100);
+            }
+            Status[12] = 5; //Биткоин всегда крипта
+        }
+
+        private void DragSell(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            string name = ((Slider)sender).Name;
+            System.Console.WriteLine("Потянули " + name);
+            if (name == "SliderBuy")
+            {
+                TextBoxMass[1].Text = Convert.ToString(SliderMass[1].Value);
+            }
+            if (name == "SliderSell")
+            {
+                TextBoxMass[0].Text = Convert.ToString(SliderMass[0].Value);
+            }
+            //Мы тянем слайдер
+        }
+
+        private void CatchButton(object sender, RoutedEventArgs e)
+        {
+            //Чтоб не создавать на каждое нажатие этот private void - я сделаю один общий для кнопок и буду отлавливать потом по названию нажатой кнопки действие. Таким образом сохраню и хоткеи, и кнопки. А, ну ещё у меня нихуя не сработало когда я пытался привязать инвентарь и перса на кнопки напрямую. Даже хз почему
+            string name = ((Button)sender).Name;
+            Debug.WriteLine("КатчButtон отловил нажатие на " + name);
+            if (name.Contains("MoneyType") == true)
+            {
+                for (int i = 0; i <30;i++)
+                {
+                    BuyMoney[i].Background = Brushes.Gainsboro;
+                }
+                IDm = Convert.ToInt32(name.Substring(9));
+                ((Button)sender).Background = Brushes.Green;
+                System.Console.WriteLine("Нажали на валюту " + name.Substring(9));
+                ImageMass[5].Source = new BitmapImage(new Uri(AppDomain.CurrentDomain.BaseDirectory + "Image/Money/"+ IDm + ".png", UriKind.Absolute));
+                ImageMass[5].Visibility = Visibility.Visible;
+
+                UpdateBuyingText();
+            }
+            if (name.Contains("Wait") == true)
+            {
+                System.Console.WriteLine("Ждем столько то");
+                TextColorMass[6].Text = ""; //Сбрасываем текст сегодняшних новостей
+                Day++;
+                EventCheck(Event[0]);
+                for (int x = 0; x < 4; x++)
+                {
+                    Event[x] = Event[x+1];
+                }
+                ChangePrice();
+                UpdateMoney();  //Не забудь добавить условие аля "Если нашу валюту "запретили" - скрыть весь лишний текст
+                UpdateBuyingText();
+            }
+            if (name.Contains("Buy") == true)
+            {
+                System.Console.WriteLine("Купили столько то");
+                RealMoney -= Convert.ToInt32(TextBoxMass[1].Text) * Price[IDm];
+                Money[IDm] += Convert.ToInt32(TextBoxMass[1].Text);
+                SliderMass[1].Value = 0;
+                TextBoxMass[1].Text = "0";
+                UpdateBuyingText();
+            }
+            if (name.Contains("Sell") == true)
+            {
+                System.Console.WriteLine("Продали столько то");
+                RealMoney += Convert.ToInt32(TextBoxMass[0].Text) * Price[IDm];
+                Money[IDm] -= Convert.ToInt32(TextBoxMass[0].Text);
+                SliderMass[0].Value = 0;
+                TextBoxMass[0].Text = "0";
+                UpdateBuyingText();
+            }
+            if (name.Contains("Makarena") == true)
+            {
+                string Path = System.AppDomain.CurrentDomain.BaseDirectory;
+                Player = new WMPLib.WindowsMediaPlayer();
+                Player.URL = Path + @"\Sound\Macarena.mp3";
+                //Player.settings.volume = 100;
+                Player.controls.play();
+            }
+            if (name.Contains("AntiMakarena") == true)
+            {
+                string Path = System.AppDomain.CurrentDomain.BaseDirectory;
+                Player = new WMPLib.WindowsMediaPlayer();
+                Player.URL = Path + @"\Sound\AntiMacarena.mp3";
+                //Player.settings.volume = 100;
+                Player.controls.play();
+            }
+        }
+
+        private void CatchImage(object sender, RoutedEventArgs e)
+        {
+            string name = ((Image)sender).Name;
+            Debug.WriteLine("КатчImage отловил имя " + name);
+            if (name.Contains("NewGame") == true)
+            {
+                System.Console.WriteLine("Новая игра");
+                ImageMass[1].Visibility = Visibility.Hidden;
+                ImageMass[2].Visibility = Visibility.Hidden;
+                CanvasMass[1].Visibility = Visibility.Visible;
+                StartGameSetting();
+                UpdateMoney();
+                UpdateBuyingText();
+            }
+            if (name.Contains("LoadGame") == true)
+            {
+                System.Console.WriteLine("Загрузка игры");
+                try
+                {
+                    object[] SaveStuff = new object[100];
+                    using (FileStream fs = new FileStream("Save.dat", FileMode.OpenOrCreate))
+                    {
+                        SaveStuff = (object[])formatter.Deserialize(fs);
+                    }
+                    using (FileStream fs = new FileStream("Save2.dat", FileMode.OpenOrCreate))
+                    {
+                        PriceChange = (int[,])formatter.Deserialize(fs);
+                    }
+                    using (FileStream fs = new FileStream("Save3.dat", FileMode.OpenOrCreate))
+                    {
+                        Logic = (bool[])formatter.Deserialize(fs);
+                    }
+                    for (int i = 0; i < 30; i++)
+                    {
+                        Money[i] = Convert.ToInt32(SaveStuff[i]);
+                        Price[i] = Convert.ToInt32(SaveStuff[i + 30]);
+                        Status[i] = Convert.ToInt32(SaveStuff[i + 60]);
+                    }
+                    RealMoney = Convert.ToInt32(SaveStuff[90]);
+                    Day = Convert.ToInt32(SaveStuff[91]);
+                    for (int i = 0; i < 5; i++)
+                    {
+                        Event[i] = Convert.ToInt32(SaveStuff[i + 92]);
+                    }
+
+                    ImageMass[1].Visibility = Visibility.Hidden;
+                    ImageMass[2].Visibility = Visibility.Hidden;
+                }
+                catch
+                {
+                    MessageBox.Show(Word[1]);
+                }
+                ImageMass[1].Visibility = Visibility.Hidden;
+                ImageMass[2].Visibility = Visibility.Hidden;
+                CanvasMass[1].Visibility = Visibility.Visible;
+                UpdateMoney();
+                UpdateBuyingText();
+            }
+            if (name.Contains("SaveGame") == true)
+            {
+                System.Console.WriteLine("Сохранение игры");
+                object[] SaveStuff = new object[100];
+                for (int i = 0; i < 30; i++)
+                {
+                    SaveStuff[i] = Money[i];
+                    SaveStuff[i + 30] = Price[i];
+                    SaveStuff[i + 60] = Status[i];
+                }
+                SaveStuff[90] = RealMoney;
+                SaveStuff[91] = Day;
+                for (int i = 0; i < 5; i++)
+                {
+                    SaveStuff[i + 92] = Event[i];
+                }
+               
+                try
+                {
+                    using (FileStream fs = new FileStream("Save.dat", FileMode.OpenOrCreate))
+                    {
+                        formatter.Serialize(fs, SaveStuff);
+                    }
+                    //string[] Text = new string[10];
+                    //for (int i = 0; i < 5; i++)
+                    //{
+                    //    Text[0] += Buddy[i] + ";";
+                    //}
+                    //string text = RoomID + "\n" + Text[0] + "\n" + Text[1] + "\n" + LuckyFactor[0] + "\n" + LuckyFactor[1] + "\n" + Text[2] + "\n" + RandomNum + "\n" + Text[3]; 
+                    //File.WriteAllText("Save/Other.txt", text);
+                    //MessageBox.Show(Word[19]);
+                    MessageBox.Show(Word[13]);
+                }
+                catch
+                {
+                    MessageBox.Show(Word[3]);
+                }
+                try
+                {
+                    using (FileStream fs = new FileStream("Save2.dat", FileMode.OpenOrCreate))
+                    {
+                        formatter.Serialize(fs, PriceChange);
+                    }
+                }
+                catch
+                {
+                    MessageBox.Show(Word[3]);
+                } //Я до последнего пытался "впихнуть" все данные в один файл, но всё же амбициозный двойной массив с отложенным изменением цены заставил создать ещё один
+                try
+                {
+                    using (FileStream fs = new FileStream("Save3.dat", FileMode.OpenOrCreate))
+                    {
+                        formatter.Serialize(fs, Logic);
+                    }
+                }
+                catch
+                {
+                    MessageBox.Show(Word[3]);
+                } //Жирик иди нахуй
+            }
+            if (name.Contains("ExitGame") == true)
+            {
+                System.Console.WriteLine("Выходим из игры");
+                System.Windows.Application.Current.Shutdown();
+            }
+        }
+    }
+}
